@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beyond the Code</title>
+<style>
+  :root {
+    --bg-top: #123a5c;
+    --bg-mid: #0d2a4a;
+    --bg-edge: #071528;
+    --text: #e6f6ff;
+    --muted: #8fc6e0;
+    --cyan: #5fe3ff;
+    --cyan-dim: rgba(95, 227, 255, 0.35);
+    --panel: rgba(8, 28, 52, 0.9);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: auto; }
+  body {
+    background: radial-gradient(ellipse at 45% 55%, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg-edge) 100%) fixed;
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow-x: hidden;
+  }
+  body.lock { overflow: hidden; }
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; touch-action: pan-y; }
+  #bg.pointer { cursor: pointer; }
+  #track { width: 1px; }   /* gives the page its scroll height */
+
+  /* ---------- Header ---------- */
+  header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 2;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+    padding: 20px 16px 28px; pointer-events: none;
+    background: linear-gradient(180deg, rgba(7,21,40,0.85) 0%, rgba(7,21,40,0) 100%);
+  }
+  h1 {
+    font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 800; letter-spacing: 0.04em;
+    text-shadow: 0 0 20px rgba(95,227,255,0.45);
+  }
+  .hint { margin-top: 4px; color: var(--muted); font-size: 0.9rem; }
+  .counter {
+    flex: none; font-size: 0.8rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted);
+    border: 1px solid rgba(95,227,255,0.35); border-radius: 20px; padding: 6px 14px;
+    background: rgba(8,28,52,0.6);
+  }
+  .counter b { color: var(--text); }
+
+  /* ---------- Intro card (start of the line) ---------- */
+  /* sits behind the life line (canvas is above it) and fades away
+     once the first light is opened */
+  /* full first screen: photo on the left, info on the right,
+     the life line runs between them */
+  #hero {
+    position: absolute; top: 0; left: 0; z-index: 0;
+    width: 100%; height: 100vh; min-height: 560px;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: min(18vw, 260px); align-items: center;
+    padding: 90px 4vw 40px;
+    pointer-events: none; user-select: none;
+    transition: opacity 1.2s ease, transform 1.4s ease, filter 1.2s ease;
+  }
+  #hero.gone { opacity: 0; filter: blur(10px); transform: scale(1.06); }
+  .hero-photo {
+    justify-self: end;
+    width: min(100%, 520px, 70vh); aspect-ratio: 1 / 1; height: auto;
+    object-fit: cover; object-position: 50% 30%;
+    border-radius: 28px;
+    border: 1px solid rgba(95,227,255,0.45);
+    box-shadow: 0 0 50px rgba(95,227,255,0.25);
+    opacity: 0.85; filter: saturate(0.85);
+  }
+  .hero-info { justify-self: start; max-width: 560px; }
+  .hero-hi { font-size: 1rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--cyan); opacity: 0.75; }
+  .hero-name {
+    margin-top: 4px; font-size: clamp(3rem, 6.5vw, 6rem); font-weight: 800; line-height: 1;
+    color: rgba(230,246,255,0.8); text-shadow: 0 0 40px rgba(95,227,255,0.4);
+  }
+  .hero-role { margin-top: 12px; color: rgba(230,246,255,0.75); font-weight: 600; font-size: clamp(1.1rem, 1.8vw, 1.5rem); }
+  .hero-bio { margin-top: 16px; color: var(--muted); opacity: 0.85; font-size: clamp(1rem, 1.3vw, 1.15rem); line-height: 1.6; }
+  .hero-facts { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; opacity: 0.8; }
+  .hero-facts .p-tag { font-size: 0.9rem; padding: 6px 14px; border-radius: 16px; }
+  @media (max-width: 760px) {
+    #hero {
+      height: auto; min-height: 0; grid-template-columns: 1fr; row-gap: 4px;
+      padding: 90px 16px 0; text-align: center;
+    }
+    .hero-photo { justify-self: center; width: min(100%, 340px, 42vh); border-radius: 22px; }
+    .hero-info { justify-self: center; }
+    .hero-facts { justify-content: center; }
+  }
+  .p-icon.photo { width: 96px; height: 96px; overflow: hidden; border-radius: 16px; }
+  .p-icon.photo img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 28%; }
+
+  /* ---------- Toast ---------- */
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; z-index: 6;
+    transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+    background: var(--panel); border: 1px solid rgba(95,227,255,0.45); border-radius: 20px;
+    padding: 8px 16px; font-size: 0.9rem; color: var(--text);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    max-width: calc(100% - 32px); text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- Screen flash ---------- */
+  #flash {
+    position: fixed; inset: 0; z-index: 5; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at var(--fx, 50%) var(--fy, 50%), #ffffff 0%, rgba(180,245,255,0.7) 12%, rgba(95,227,255,0) 45%);
+  }
+  #flash.go { animation: flash 0.6s ease-out; }
+  @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* ---------- Info panel ---------- */
+  #overlay {
+    position: fixed; inset: 0; z-index: 10;
+    display: grid; place-items: center; padding: 16px;
+    background: rgba(4, 14, 28, 0.35);
+    opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+  }
+  #overlay.open { opacity: 1; pointer-events: auto; }
+  .panel {
+    position: relative; width: min(600px, 100%);
+    max-height: calc(100vh - 32px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--cyan); border-radius: 10px;
+    padding: 28px 24px 24px;
+    box-shadow: 0 0 40px rgba(95,227,255,0.35), inset 0 0 30px rgba(95,227,255,0.08);
+    backdrop-filter: blur(8px);
+    transform: scale(0.2); opacity: 0;
+    transition: transform 0.45s cubic-bezier(.2,1.3,.4,1), opacity 0.3s ease;
+  }
+  #overlay.open .panel { transform: none; opacity: 1; }
+  .panel::before {
+    content: ""; position: absolute; top: -1px; left: -1px; width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--cyan) 50%, transparent 50%); border-top-left-radius: 10px;
+  }
+  .p-icon {
+    width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 1.8rem;
+    border: 1px solid var(--cyan); box-shadow: 0 0 18px var(--cyan-dim);
+  }
+  .p-label { margin-top: 16px; font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--cyan); }
+  .p-title { margin-top: 4px; font-size: 1.6rem; font-weight: 800; }
+  .p-text { margin-top: 12px; color: var(--muted); line-height: 1.6; }
+  .p-items { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .p-item {
+    border: 1px solid rgba(95,227,255,0.22); border-left: 3px solid var(--cyan);
+    border-radius: 6px; padding: 10px 12px; background: rgba(95,227,255,0.05);
+  }
+  .p-item-name { font-weight: 700; font-size: 0.95rem; }
+  .p-item-sub { margin-top: 3px; font-size: 0.8rem; color: var(--cyan); }
+  .p-item-detail { margin-top: 4px; font-size: 0.85rem; color: var(--muted); line-height: 1.45; }
+  .p-tags { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .p-tag {
+    font-size: 0.75rem; padding: 4px 10px; border-radius: 12px;
+    border: 1px solid rgba(95,227,255,0.4); color: var(--text); background: rgba(95,227,255,0.08);
+  }
+  .p-note {
+    margin-top: 16px; padding: 12px 14px; border-radius: 6px;
+    background: rgba(95,227,255,0.1); border: 1px solid rgba(95,227,255,0.3);
+    font-size: 0.9rem; line-height: 1.5; font-style: italic;
+  }
+  .close {
+    position: absolute; top: 12px; right: 12px; width: 36px; height: 36px;
+    font: inherit; font-size: 1.3rem; line-height: 1; color: var(--muted);
+    background: transparent; border: 1px solid rgba(95,227,255,0.3); border-radius: 50%; cursor: pointer;
+  }
+  .close:hover, .close:focus-visible { color: var(--text); border-color: var(--cyan); outline: none; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="track"></div>
+
+<section id="hero" aria-label="About me">
+  <img class="hero-photo" src="photo_2026-11-10_11-04-29.jpg" alt="Ion Josu">
+  <div class="hero-info">
+    <div class="hero-hi">Hi, I’m</div>
+    <div class="hero-name">Ion Josu</div>
+    <div class="hero-role">Backend .NET Developer · Moldcell</div>
+    <div class="hero-bio">24 years old. It started with video games and a computer science textbook found by accident — today I build and maintain backend services, integrations and distributed systems.</div>
+    <div class="hero-facts">
+      <span class="p-tag">24 years old</span>
+      <span class="p-tag">C# • .NET</span>
+      <span class="p-tag">At Moldcell since 2022</span>
+      <span class="p-tag">Student at UTM</span>
+    </div>
+  </div>
+</section>
+
+<header>
+  <div>
+    <h1>Beyond the Code</h1>
+    <div class="hint">Follow the life line — click any flashing point</div>
+  </div>
+  <div class="counter"><b id="found">0</b> / <span id="total">0</span> steps</div>
+</header>
+
+<div id="flash"></div>
+<div id="toast" role="status"></div>
+
+<div id="overlay" role="dialog" aria-modal="true" aria-labelledby="pTitle">
+  <div class="panel" id="panel">
+    <button class="close" id="close" aria-label="Close">×</button>
+    <div class="p-icon" id="pIcon"></div>
+    <div class="p-label" id="pLabel"></div>
+    <div class="p-title" id="pTitle"></div>
+    <div class="p-text" id="pText"></div>
+    <div id="pBody"></div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   YOUR LIFE LINE — edit here.
+   Each step: icon, short (text on the line), label (year · topic), title, text,
+   optional: items [{ name, sub, detail }], tags [..], note
+   A { branch: [...] } entry splits the line into two paths that run
+   at the same time (Moldcell + UTM) and join again after.
+   Each path can be opened on its own; the step after the branch
+   unlocks once both paths are finished.
+   ===================================================================== */
+const LIFE = [
+  {
+    icon: '🌱', photo: 'photo_2026-11-10_11-04-29.jpg',
+    short: 'Ion Josu · 2002', label: '2002 · Start', title: 'Hi, I’m Ion Josu',
+    text: 'Born in 2002, 24 years old. Today I’m a Backend .NET Developer at Moldcell and a student at the Technical University of Moldova — and this is my journey, beyond the code.',
+    items: [
+      { name: 'Role',      sub: 'Backend .NET Developer', detail: 'Moldcell, since 2022' },
+      { name: 'Studies',   sub: 'Computers and Networks', detail: 'UTM, expected 2027' },
+      { name: 'Main stack', sub: 'C# • .NET • Oracle • SQL Server • MongoDB • RabbitMQ' }
+    ],
+    tags: ['Curiosity', 'Video games', 'Backend'],
+    note: 'It all started long before my first job — with video games and one question: how are they actually made?'
+  },
+  {
+    icon: '📘', short: 'First discovery', label: 'Before 2018 · Curiosity', title: 'The textbook in the hallway',
+    text: 'During a Romanian language class I was sent out for causing a disturbance. While waiting for the lesson to end, I found a computer science textbook and started reading it. That accidental moment was my first contact with programming.',
+    note: 'Video games played their part too: I was fascinated by how they were built and dreamed of creating even a simple game myself.'
+  },
+  {
+    icon: '🏫', short: 'College at CEEE', label: '2018 · Education', title: 'Center of Excellence in Energetics and Electronics',
+    text: 'I enrolled at CEEE, specializing in Computer Networks — the beginning of my structured technical education.',
+    tags: ['Computer Networks', '2018 – 2022']
+  },
+  {
+    icon: '💻', short: 'Learning to build', label: '2018–2022 · Exploration', title: 'Exploring programming and technology',
+    text: 'College gave me room to explore many areas — and taught me to learn unfamiliar tools and languages on my own, relatively quickly.',
+    items: [
+      { name: 'Pascal',           detail: 'My first programming language' },
+      { name: 'C & C++',          detail: 'The languages that made me genuinely interested in programming' },
+      { name: 'Android Studio',   detail: 'Mobile application development' },
+      { name: 'Creative tools',   sub: 'Photoshop • Premiere Pro • FL Studio', detail: 'Graphic design, video editing, audio production' }
+    ],
+    note: 'Once I copied a C lab assignment before I understood the material. My teacher noticed the topic hadn’t been covered yet and asked me to explain it. That pushed me to learn C properly — an awkward moment that became a real lesson.'
+  },
+  {
+    icon: '🖥️', short: 'My first application', label: '2018–2022 · First creation', title: 'My first desktop application',
+    text: 'A desktop application that organized and compiled my C programs and displayed their outputs. It made preparing and presenting lab assignments much easier.',
+    tags: ['C', 'Desktop app', 'Built for a real need'],
+    note: 'It was small, but it gave me something important: confidence that I can build useful software on my own.'
+  },
+  {
+    icon: '🎓', short: 'Graduated CEEE', label: '2022 · Diploma', title: 'A strong foundation',
+    text: 'I graduated from CEEE with a diploma in Computer Networks, completing four years of technical education — the foundation for my professional career.',
+    items: [
+      { name: 'GPA 9.81', sub: 'Diploma in Computer Networks' }
+    ]
+  },
+  {
+    icon: '🚪', short: 'Internship at Moldcell', label: '2022 · First professional step', title: 'Internship at Moldcell',
+    text: 'A three-month internship where I was given real tasks — not just a chance to observe a development team. I tried several directions:',
+    items: [
+      { name: 'Database',  sub: 'PL/SQL',      detail: 'Database development' },
+      { name: 'Frontend',  sub: 'Web pages',   detail: 'Page logic and UI behaviour' },
+      { name: 'Backend',   sub: 'Application logic', detail: 'The direction I enjoyed most' }
+    ],
+    note: 'With guidance from my mentor, Oleg Rudei, I discovered that backend development was my direction.'
+  },
+  {
+    branch: [
+      {
+        name: 'Moldcell',
+        steps: [
+          {
+            icon: '🤖', short: 'First task, first job', label: '2022 · Programmer Assistant', title: 'My first task — and my first job',
+            text: 'One of my first assignments was a Telegram bot for football match predictions, requested by HR. It had a few bugs, and I found and fixed them quickly.',
+            tags: ['Telegram bot', 'Debugging'],
+            note: 'The internship led directly to a Programmer Assistant position at Moldcell — the start of my professional career.'
+          },
+          {
+            icon: '💬', short: 'SMS-Portal', label: '2022+ · First .NET experience', title: 'SMS-Portal',
+            text: 'One of the first platforms where I applied my knowledge in a professional environment. An early challenge: calling a backend endpoint from the frontend with AJAX.',
+            tags: ['.NET', 'C#', 'ASP.NET MVC', 'AJAX'],
+            note: 'My first real lesson in how frontend and backend components communicate in real applications.'
+          },
+          {
+            icon: '📄', short: 'Document processing', label: 'Project · Distributed systems', title: 'Document Processing Platform',
+            text: 'A document-processing ecosystem: generation, digital signatures, storage, messaging and email delivery — one business process coordinated across several independent components.',
+            items: [
+              { name: 'Exporter',   detail: 'Generates documents' },
+              { name: 'RabbitMQ',   detail: 'Queues the work' },
+              { name: 'PDF Signer', detail: 'Signs via external API & updates status' },
+              { name: 'Doc Mailer', detail: 'Delivers documents over SMTP' },
+              { name: 'MongoDB',    detail: 'Metadata & status' },
+              { name: 'MinIO',      detail: 'Original & signed files' }
+            ],
+            tags: ['Async processing', 'Distributed workflows', 'Document lifecycle', 'Reliability']
+          },
+          {
+            icon: '📡', short: 'SMPP Bridge & Survey API', label: 'Project · Telecom', title: 'Telecommunications engineering',
+            text: 'Services that connect business applications to SMS infrastructure.',
+            items: [
+              { name: 'SMPP Bridge', sub: '.NET • Oracle • RabbitMQ • Inetlab.SMPP • Kannel',
+                detail: 'A REST gateway to SMS centers: messaging protocols, database procedures, connection management and service monitoring.' },
+              { name: 'Survey API', sub: '.NET • SQL Server • HTTP APIs',
+                detail: 'Processes SMS quizzes and surveys: interprets subscriber messages, loads quiz and customer state, decides the next response.' }
+            ],
+            tags: ['SMPP', 'State management', 'API design', 'Integrations']
+          },
+          {
+            icon: '🔔', short: 'CallNotes & more', label: 'Project · Event-driven', title: 'Expanding my experience',
+            text: 'More backend applications — and modernizing the ones that already exist.',
+            items: [
+              { name: 'CallNotes', sub: '.NET 9 • C# 13 • MongoDB • RabbitMQ',
+                detail: 'Processes call-related notifications and data: event-driven processing, message handling, backend APIs.' },
+              { name: 'Application modernization', sub: 'Legacy .NET → modern .NET',
+                detail: 'Moving to newer .NET versions, improving code structure and replacing outdated approaches.' }
+            ],
+            note: 'Different domains, shared engineering concerns: integration, data flow, reliability and maintainability.'
+          }
+        ]
+      },
+      {
+        name: 'UTM',
+        steps: [
+          {
+            icon: '🏛️', short: 'University (UTM)', label: '2022 · University', title: 'Technical University of Moldova',
+            text: 'Faculty of Computers, Informatics and Microelectronics, specializing in Computers and Networks. I study in a reduced-attendance format while working full-time at Moldcell.',
+            tags: ['Computers and Networks', '2022 – 2027']
+          },
+          {
+            icon: '🎓', short: 'Graduation · 2027', label: '2027 · Expected', title: 'Learning while working',
+            text: 'College gave me a strong foundation and space to explore. Now professional work is where I develop most of my practical engineering skills — with university running alongside it.',
+            tags: ['Expected graduation: 2027']
+          }
+        ]
+      }
+    ]
+  },
+  {
+    icon: '🧩', short: 'Beyond writing endpoints', label: '2022–present · Engineering', title: 'Beyond application development',
+    text: 'In about four and a half years at Moldcell I grew from a beginner into an engineer working with backend applications, databases, integrations and distributed services.',
+    items: [
+      { name: 'Architecture & integrations', detail: 'External systems and services, distributed application workflows' },
+      { name: 'Performance & reliability',   detail: 'Memory issues, messaging behaviour, database updates, SMTP delivery, concurrent processing' },
+      { name: 'Testing & quality',           sub: 'MSTest • Moq • SonarQube', detail: 'Unit and integration tests, improving code coverage' },
+      { name: 'Technical documentation',     detail: 'Architecture, integrations, deployment, testing and operational behaviour' }
+    ]
+  },
+  {
+    icon: '📊', short: 'Engineering for production', label: '2022–present · Operations', title: 'Engineering for production',
+    text: 'A service isn’t finished when it’s deployed — it has to stay understandable and supportable.',
+    items: [
+      { name: 'Docker & Kubernetes', detail: 'Preparing applications, configuration and deployment' },
+      { name: 'GitLab CI',           detail: 'Build and delivery pipelines' },
+      { name: 'Health checks',       detail: 'Health and readiness endpoints' },
+      { name: 'Grafana',             detail: 'Metrics, dashboards and alerts' }
+    ],
+    note: 'More and more, my work is about how applications behave in production — not only how they’re written.'
+  },
+  {
+    icon: '🧰', short: 'My toolkit', label: 'Today · Technology', title: 'My technical toolkit',
+    text: 'Backend .NET Developer at Moldcell (2022 – present). The technologies I work with:',
+    items: [
+      { name: 'Backend',          sub: 'C# • .NET • ASP.NET MVC • ASP.NET Web API' },
+      { name: 'Databases',        sub: 'Oracle • SQL Server • MongoDB' },
+      { name: 'Messaging & storage', sub: 'RabbitMQ • SMPP • MinIO' },
+      { name: 'Testing & quality', sub: 'MSTest • Moq • Integration tests • SonarQube' },
+      { name: 'Platform',         sub: 'Docker • Kubernetes • GitLab CI' },
+      { name: 'Monitoring',       sub: 'Grafana • Metrics • Health checks • Alerts' },
+      { name: 'Where I started',  sub: 'Pascal • C • C++ • Android Studio' },
+      { name: 'Creative side',    sub: 'Photoshop • Premiere Pro • FL Studio' }
+    ]
+  },
+  {
+    icon: '🎯', short: 'The next chapter', label: 'Next', title: 'Where I stand — and where I grow next',
+    text: 'My own assessment, on a scale of 1 to 5:',
+    items: [
+      { name: 'C# / .NET development',    sub: '●●●●● 5/5' },
+      { name: 'Performance optimization', sub: '●●●●● 5/5' },
+      { name: 'System architecture',      sub: '●●●●○ 4/5' },
+      { name: 'Databases',                sub: '●●●●○ 4/5' },
+      { name: 'Distributed systems',      sub: '●●●●○ 4/5' },
+      { name: 'Testing',                  sub: '●●●●○ 4/5' },
+      { name: 'Communication',            sub: '●●●●○ 4/5' },
+      { name: 'Observability',            sub: '●●●○○ 3/5 · growing' },
+      { name: 'Security',                 sub: '●●●○○ 3/5 · growing' },
+      { name: 'DevOps',                   sub: '●●○○○ 2/5 · growing' }
+    ],
+    note: 'From curiosity to engineering: next I want to grow in DevOps, observability and security — and keep building systems that work beyond the code.'
+  }
+];
+
+/* ---------------- Build the step graph ---------------- */
+const rand = (a, b) => a + Math.random() * (b - a);
+const structure = [];   // layout order
+const order = [];       // every step
+// Each step knows which steps must be opened before it (preds).
+// Inside a branch each path only depends on itself, so the paths can be
+// explored independently; the step after the branch needs both paths done.
+let prevTails = [];
+
+for (const entry of LIFE) {
+  if (entry.branch) {
+    const lanes = entry.branch.slice(0, 2).map((lane, li) =>
+      lane.steps.map(item => ({ item, side: li === 0 ? -1 : 1, lane: lane.name })));
+    structure.push({ lanes, names: entry.branch.map(b => b.name) });
+    const tails = [];
+    lanes.forEach(l => {
+      let prev = prevTails;
+      l.forEach(n => { n.preds = prev; order.push(n); prev = [n]; });
+      tails.push(...prev);
+    });
+    prevTails = tails;
+  } else {
+    const n = { item: entry, side: 0, preds: prevTails };
+    structure.push({ node: n });
+    order.push(n);
+    prevTails = [n];
+  }
+}
+
+const isActive  = n => !n.opened && n.preds.every(p => p.opened);
+const isReached = n => n.opened || isActive(n);
+function blocker(n) {   // the open-able step that stands in the way of n
+  for (const p of n.preds) if (!p.opened) return isActive(p) ? p : blocker(p);
+  return n;
+}
+order.forEach((n, i) => {
+  n.order = i;
+  n.labelSide = n.side === 0 ? 1 : n.side;
+  const twigSide = n.side === 0 ? -1 : -n.side;
+  n.twigs = Array.from({ length: n.side === 0 ? 2 : 1 }, () => ({
+    dir: twigSide, ang: rand(-0.9, 0.9), len: rand(22, 55), bend: rand(-0.5, 0.5), phase: rand(0, 6.28)
+  }));
+});
+
+let opened = 0, lastOpened = null;
+document.getElementById('total').textContent = order.length;
+
+/* ---------------- Canvas + layout ---------------- */
+const canvas = document.getElementById('bg');
+const ctx = canvas.getContext('2d');
+const track = document.getElementById('track');
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let W, H, DPR, D, A1, A2, narrow;
+let curves = [], branches = [], dust = [], waves = [];
+let clock = 0, last = performance.now(), speed = 1, hovered = null, panelOpen = false;
+
+function smooth(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
+
+function blend(y) {
+  for (const b of branches) {
+    if (y > b.splitY && y < b.mergeY) {
+      return Math.min(smooth((y - b.splitY) / b.split), smooth((b.mergeY - y) / b.split));
+    }
+  }
+  return 0;
+}
+function base(y) {
+  return W / 2 + A1 * Math.sin(y / 280 + clock * 0.00045) + A2 * Math.sin(y / 700 - clock * 0.0003 + 1);
+}
+function xAt(side, y) { return base(y) + side * D * blend(y); }
+
+function layout() {
+  narrow = W < 640;
+  D  = Math.min(170, W * 0.24);
+  A1 = Math.min(70, W * 0.08);
+  A2 = Math.min(40, W * 0.05);
+  const STEP = Math.max(130, Math.min(170, H * 0.2));
+  const LSTEP = STEP * 0.85, SPLIT = Math.min(120, STEP * 0.8);
+
+  curves = []; branches = [];
+  const hero = document.getElementById('hero');
+  // wide screens: the first light sits between photo and info;
+  // narrow screens (stacked intro): it starts below the intro
+  let y = W < 760 ? Math.max(220, hero.offsetTop + hero.offsetHeight + 60)
+                  : Math.max(220, H * 0.55);
+  let mainStart = 0, prevMainY = null;
+
+  for (const s of structure) {
+    if (s.node) {
+      s.node.y = y; prevMainY = y; y += STEP;
+    } else {
+      const splitY = (prevMainY ?? y - STEP) + STEP * 0.4;
+      curves.push({ side: 0, y0: mainStart, y1: splitY });
+      const maxLen = Math.max(...s.lanes.map(l => l.length));
+      const mergeY = splitY + SPLIT * 2 + (maxLen - 1) * LSTEP;
+      const b = { splitY, mergeY, split: SPLIT, names: s.names };
+      branches.push(b);
+      s.lanes.forEach((lane, li) => {
+        const c = { side: li === 0 ? -1 : 1, y0: splitY, y1: mergeY, branch: b, name: s.names[li] };
+        curves.push(c);
+        // spread each lane's steps evenly through the parallel section
+        const span = mergeY - splitY - SPLIT * 2;
+        lane.forEach((n, i) => {
+          n.y = splitY + SPLIT + (lane.length > 1 ? i * span / (lane.length - 1) : span / 2);
+          n.curve = c;
+        });
+      });
+      mainStart = mergeY; prevMainY = null; y = mergeY + STEP * 0.55;
+    }
+  }
+  const lastY = y - STEP;
+  curves.push({ side: 0, y0: mainStart, y1: lastY + 180, tail: true });
+  for (const n of order) if (n.side === 0) n.curve = curves.find(c => c.side === 0 && n.y >= c.y0 && n.y <= c.y1);
+
+  track.style.height = (lastY + H * 0.55) + 'px';
+  updateTargets(true);
+}
+
+function updateTargets(instant) {
+  for (const c of curves) {
+    let t = c.y0;
+    // light the path through every opened step AND up to each active one
+    for (const n of order) {
+      if (!isReached(n)) continue;
+      if (n.curve === c) t = Math.max(t, n.y);
+      else if (n.y > c.y1 && (c.side === 0 || n.side === 0)) t = c.y1;
+    }
+    // a finished path runs on to where it joins the main line
+    if (c.side !== 0 && order.every(n => n.curve !== c || n.opened)) t = c.y1;
+    if (c.tail && opened >= order.length) t = c.y1;
+    c.target = Math.min(t, c.y1);
+    if (instant || c.cur == null) c.cur = c.target;
+  }
+}
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const count = Math.round(Math.min(70, Math.max(25, (W * H) / 20000)));
+  dust = Array.from({ length: count }, () => ({
+    x: rand(0, W), y: rand(0, H), z: rand(0.4, 1),
+    vx: rand(-0.12, 0.12), vy: rand(-0.12, 0.12), ix: 0, iy: 0, boost: 0
+  }));
+  layout();
+}
+
+/* ---------------- Effects ---------------- */
+function burst(x, y, power = 1) {   // x, y in screen coords
+  const docY = y + scrollY;
+  waves.push({ x, y: docY, r: 0, max: 200 * power, a: 1 });
+  waves.push({ x, y: docY, r: 0, max: 120 * power, a: 0.8, delay: 6 });
+  for (const n of dust) {
+    const dx = n.x - x, dy = n.y - y, d = Math.hypot(dx, dy) || 1, reach = 260 * power;
+    if (d < reach) {
+      const f = (1 - d / reach) * 5 * power;
+      n.ix += dx / d * f; n.iy += dy / d * f;
+      n.boost = Math.max(n.boost, 1 - d / reach);
+    }
+  }
+}
+
+function drawFlash(x, y, t, state, isHover) {
+  // state: 'open' | 'active'
+  const open = state === 'open';
+  const pulse = 0.5 + 0.5 * Math.sin(t / 380);
+  const R = (open ? 5 : 8) + pulse * (open ? 1 : 4) + (isHover ? 4 : 0);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, R * 2);
+  g.addColorStop(0, `rgba(255,255,255,${open ? 0.5 : 0.95})`);
+  g.addColorStop(0.18, `rgba(200,250,255,${open ? 0.35 : 0.7})`);
+  g.addColorStop(0.5, `rgba(95,227,255,${open ? 0.12 : 0.25})`);
+  g.addColorStop(1, 'rgba(95,227,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, R * 2, 0, Math.PI * 2); ctx.fill();
+
+  const L = R * (open ? 1.3 : 1.9);
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(t / 4000);
+  ctx.strokeStyle = `rgba(255,255,255,${open ? 0.4 : 0.85})`;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(-L, 0); ctx.lineTo(L, 0); ctx.moveTo(0, -L); ctx.lineTo(0, L); ctx.stroke();
+  ctx.lineWidth = 0.8; ctx.globalAlpha = 0.5;
+  const l2 = L * 0.5;
+  ctx.beginPath(); ctx.moveTo(-l2, -l2); ctx.lineTo(l2, l2); ctx.moveTo(-l2, l2); ctx.lineTo(l2, -l2); ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(x, y, open ? 1.8 : 2.4, 0, Math.PI * 2); ctx.fill();
+  if (open) {
+    ctx.strokeStyle = 'rgba(95,227,255,0.6)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+function tracePath(side, ya, yb, sy) {
+  ctx.beginPath();
+  ctx.moveTo(xAt(side, ya), ya - sy);
+  for (let y = ya + 6; y < yb; y += 6) ctx.lineTo(xAt(side, y), y - sy);
+  ctx.lineTo(xAt(side, yb), yb - sy);
+}
+
+function drawCurve(c, sy) {
+  const ya = Math.max(c.y0, sy - 40), yb = Math.min(c.y1, sy + H + 40);
+  if (ya >= yb) return;
+
+  // future path: faint dashed
+  ctx.setLineDash([4, 8]);
+  ctx.strokeStyle = 'rgba(95,227,255,0.28)';
+  ctx.lineWidth = 1.5;
+  tracePath(c.side, ya, yb, sy); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // travelled path: glowing
+  const rb = Math.min(c.cur, yb);
+  if (rb > ya) {
+    ctx.strokeStyle = 'rgba(95,227,255,0.16)'; ctx.lineWidth = 8;
+    tracePath(c.side, ya, rb, sy); ctx.stroke();
+    ctx.strokeStyle = 'rgba(170,240,255,0.95)'; ctx.lineWidth = 2;
+    tracePath(c.side, ya, rb, sy); ctx.stroke();
+  }
+  // spark at the head while the line is growing
+  if (c.target - c.cur > 1 && c.cur > ya && c.cur < yb) {
+    const x = xAt(c.side, c.cur), y = c.cur - sy;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, 14);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(95,227,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fill();
+  }
+  // lane name where the line splits
+  if (c.name) {
+    const ly = c.y0 + c.branch.split * 0.55;
+    if (ly > sy && ly < sy + H) {
+      ctx.font = '700 11px system-ui, sans-serif';
+      ctx.textAlign = c.side < 0 ? 'right' : 'left';
+      ctx.fillStyle = 'rgba(95,227,255,0.85)';
+      ctx.fillText(c.name.toUpperCase(), xAt(c.side, ly) + c.side * 14, ly - sy);
+    }
+  }
+}
+
+function drawTwigs(n, x, y, t, lit) {
+  for (const tw of n.twigs) {
+    const sway = 0.15 * Math.sin(t / 1500 + tw.phase);
+    const a = (tw.dir > 0 ? 0 : Math.PI) + tw.ang * tw.dir + sway;
+    const ex = x + Math.cos(a) * tw.len, ey = y + Math.sin(a) * tw.len;
+    const mx = x + Math.cos(a + tw.bend) * tw.len * 0.5, my = y + Math.sin(a + tw.bend) * tw.len * 0.5;
+    ctx.strokeStyle = `rgba(95,227,255,${lit ? 0.55 : 0.18})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
+    ctx.fillStyle = `rgba(200,245,255,${lit ? 0.8 : 0.3})`;
+    ctx.beginPath(); ctx.arc(ex, ey, 1.6, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawLabel(n, x, y, state, t) {
+  const top = state === 'open' ? n.item.label : 'Next step';
+  const main = state === 'open' ? `${n.item.icon}  ${n.item.short}` : '?  Click to discover';
+  ctx.globalAlpha = state === 'open' ? 1 : 0.6 + 0.4 * Math.sin(t / 380);
+  let lx, ly, align;
+  if (narrow && n.side === 0) { lx = x + 16; ly = y; align = 'left'; }
+  else if (narrow) { lx = x; ly = y + 30; align = 'center'; }
+  else { lx = x + n.labelSide * 20; ly = y; align = n.labelSide > 0 ? 'left' : 'right'; }
+  ctx.textAlign = align;
+  ctx.font = '600 10px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(95,227,255,0.9)';
+  ctx.fillText(top.toUpperCase(), lx, ly - 9);
+  ctx.font = `600 ${narrow ? 13 : 15}px system-ui, sans-serif`;
+  ctx.fillStyle = '#e6f6ff';
+  ctx.fillText(main, lx, ly + 9);
+  ctx.globalAlpha = 1;
+}
+
+/* ---------------- Frame ---------------- */
+function frame(now) {
+  const dt = Math.min(50, now - last); last = now;
+  const target = reduceMotion ? 0 : (panelOpen ? 0.25 : hovered ? 0.1 : 1);
+  speed += (target - speed) * 0.08;
+  clock += dt * speed;
+  const t = now;
+  const sy = scrollY;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // ambient dust network (screen-fixed)
+  for (const n of dust) {
+    n.x += n.vx * n.z * speed + n.ix; n.y += n.vy * n.z * speed + n.iy;
+    n.ix *= 0.93; n.iy *= 0.93; n.boost *= 0.97;
+    if (n.x < -40) n.x = W + 40; if (n.x > W + 40) n.x = -40;
+    if (n.y < -40) n.y = H + 40; if (n.y > H + 40) n.y = -40;
+  }
+  for (let i = 0; i < dust.length; i++) {
+    for (let j = i + 1; j < dust.length; j++) {
+      const a = dust[i], b = dust[j];
+      const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+      if (d2 < 140 * 140) {
+        const lit = Math.max(a.boost, b.boost);
+        ctx.strokeStyle = `rgba(110,220,245,${(1 - Math.sqrt(d2) / 140) * (0.18 * Math.min(a.z, b.z) + lit * 0.5)})`;
+        ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+    }
+  }
+  for (const n of dust) {
+    ctx.fillStyle = `rgba(200,245,255,${0.25 + 0.3 * n.z + n.boost * 0.5})`;
+    ctx.beginPath(); ctx.arc(n.x, n.y, 0.8 + n.z + n.boost * 1.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // life line
+  for (const c of curves) {
+    c.cur += (c.target - c.cur) * 0.05;
+    if (Math.abs(c.target - c.cur) < 0.5) c.cur = c.target;
+    drawCurve(c, sy);
+  }
+
+  // steps
+  for (const n of order) {
+    n.sx = xAt(n.side, n.y); n.sy = n.y - sy;
+    n.visible = n.sy > -60 && n.sy < H + 60;
+    if (!n.visible) continue;
+    const state = n.opened ? 'open' : isActive(n) ? 'active' : 'locked';
+    // only light a step once the line has reached it
+    const reached = !n.curve || n.curve.cur >= n.y - 2;
+    drawTwigs(n, n.sx, n.sy, t, state === 'open');
+    if (state === 'locked' || (state === 'active' && !reached)) {
+      ctx.fillStyle = 'rgba(160,220,240,0.45)';
+      ctx.beginPath(); ctx.arc(n.sx, n.sy, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(95,227,255,0.3)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(n.sx, n.sy, 7, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      drawFlash(n.sx, n.sy, t, state, hovered === n);
+      drawLabel(n, n.sx, n.sy, state, t);
+    }
+  }
+
+  // shockwaves
+  for (let i = waves.length - 1; i >= 0; i--) {
+    const w = waves[i];
+    if (w.delay) { w.delay--; continue; }
+    w.r += (w.max - w.r) * 0.07 + 1.5; w.a *= 0.95;
+    ctx.strokeStyle = `rgba(200,250,255,${w.a})`;
+    ctx.lineWidth = 1.5 + w.a * 3;
+    ctx.beginPath(); ctx.arc(w.x, w.y - sy, w.r, 0, Math.PI * 2); ctx.stroke();
+    if (w.a < 0.02) waves.splice(i, 1);
+  }
+
+  requestAnimationFrame(frame);
+}
+
+/* ---------------- Interaction ---------------- */
+const overlay = document.getElementById('overlay');
+const panel = document.getElementById('panel');
+const flashEl = document.getElementById('flash');
+const closeBtn = document.getElementById('close');
+const toastEl = document.getElementById('toast');
+let toastTimer;
+
+function hitTest(x, y) {
+  let best = null, bestD = 22;
+  for (const n of order) {
+    if (!n.visible) continue;
+    const d = Math.hypot(n.sx - x, n.sy - y);
+    if (d < bestD) { bestD = d; best = n; }
+  }
+  return best;
+}
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+}
+
+canvas.addEventListener('pointermove', e => {
+  if (panelOpen) return;
+  const h = hitTest(e.clientX, e.clientY);
+  hovered = h && isReached(h) ? h : null;
+  canvas.classList.toggle('pointer', !!h);
+});
+canvas.addEventListener('pointerleave', () => { hovered = null; canvas.classList.remove('pointer'); });
+canvas.addEventListener('click', e => {
+  if (panelOpen) return;
+  const n = hitTest(e.clientX, e.clientY);
+  if (!n) { burst(e.clientX, e.clientY, 0.35); return; }
+  if (!isReached(n)) {
+    burst(n.sx, n.sy, 0.3);
+    toast(`Locked — first open “${blocker(n).item.short}”`);
+    return;
+  }
+  openStep(n);
+});
+
+function openStep(n) {
+  const isNew = !n.opened;
+  lastOpened = n;
+  flashEl.style.setProperty('--fx', n.sx + 'px');
+  flashEl.style.setProperty('--fy', n.sy + 'px');
+  flashEl.classList.remove('go'); void flashEl.offsetWidth; flashEl.classList.add('go');
+  burst(n.sx, n.sy, isNew ? 1 : 0.6);
+
+  if (isNew) {
+    n.opened = true;
+    opened++;
+    document.getElementById('hero').classList.add('gone');   // intro fades once the first light is opened
+    document.getElementById('found').textContent = opened;
+    updateTargets(false);
+  }
+
+  const item = n.item;
+  const pIcon = document.getElementById('pIcon');
+  pIcon.classList.toggle('photo', !!item.photo);
+  if (item.photo) {
+    pIcon.textContent = '';
+    const img = el('img');
+    img.src = item.photo; img.alt = item.title;
+    pIcon.appendChild(img);
+  } else {
+    pIcon.textContent = item.icon;
+  }
+  document.getElementById('pLabel').textContent = item.label;
+  document.getElementById('pTitle').textContent = item.title;
+  document.getElementById('pText').textContent = item.text;
+  renderBody(item);
+  panel.scrollTop = 0;
+
+  const r = panel.getBoundingClientRect();
+  panel.style.transformOrigin = `${n.sx - (W - r.width) / 2}px ${n.sy - (H - r.height) / 2}px`;
+
+  panelOpen = true; hovered = null; canvas.classList.remove('pointer');
+  document.body.classList.add('lock');
+  setTimeout(() => { overlay.classList.add('open'); closeBtn.focus(); }, 120);
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
+}
+
+function renderBody(item) {
+  const body = document.getElementById('pBody');
+  body.innerHTML = '';
+  if (item.items) {
+    const grid = el('div', 'p-items');
+    for (const it of item.items) {
+      const box = el('div', 'p-item');
+      box.appendChild(el('div', 'p-item-name', it.name));
+      if (it.sub) box.appendChild(el('div', 'p-item-sub', it.sub));
+      if (it.detail) box.appendChild(el('div', 'p-item-detail', it.detail));
+      grid.appendChild(box);
+    }
+    body.appendChild(grid);
+  }
+  if (item.tags) {
+    const tags = el('div', 'p-tags');
+    item.tags.forEach(t => tags.appendChild(el('span', 'p-tag', t)));
+    body.appendChild(tags);
+  }
+  if (item.note) body.appendChild(el('div', 'p-note', item.note));
+}
+
+function closeInfo() {
+  overlay.classList.remove('open');
+  document.body.classList.remove('lock');
+  setTimeout(() => {
+    panelOpen = false;
+    // glide to the next step — stay on the same path if it continues
+    const act = order.filter(isActive);
+    const next = act.find(a => a.lane && lastOpened && a.lane === lastOpened.lane) || act[0];
+    if (next && (next.y - scrollY > H * 0.75 || next.y - scrollY < H * 0.2)) {
+      window.scrollTo({ top: next.y - H * 0.55, behavior: reduceMotion ? 'auto' : 'smooth' });
+    }
+  }, 250);
+}
+
+closeBtn.addEventListener('click', closeInfo);
+overlay.addEventListener('click', e => { if (e.target === overlay) closeInfo(); });
+document.addEventListener('keydown', e => {
+  if (panelOpen && e.key === 'Escape') closeInfo();
+  else if (!panelOpen && e.key === 'Enter' && order.some(isActive)) {
+    const n = order.find(isActive);
+    window.scrollTo({ top: n.y - H * 0.55 });
+    n.sx = xAt(n.side, n.y); n.sy = n.y - scrollY;
+    openStep(n);
+  }
+});
+
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
