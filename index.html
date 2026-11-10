@@ -86,7 +86,13 @@
       height: auto; min-height: 0; grid-template-columns: 1fr; row-gap: 4px;
       padding: 90px 16px 0; text-align: center;
     }
-    .hero-photo { justify-self: center; width: min(100%, 340px, 42vh); border-radius: 22px; }
+    /* on phones the line runs behind the photo: #hero stops being its own
+       layer (z-index: auto) so the photo can sit above the canvas */
+    #hero { z-index: auto; }
+    .hero-photo {
+      justify-self: center; width: min(100%, 340px, 42vh); border-radius: 22px;
+      position: relative; z-index: 1; opacity: 1;
+    }
     .hero-info { justify-self: center; }
     .hero-facts { justify-content: center; }
   }
